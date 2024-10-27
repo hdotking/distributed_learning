@@ -38,19 +38,33 @@ class DatasetCreator:
     def process_data(self, examples):
         # Tokenize the input text
         tokenized_inputs = self.tokenizer(
-            examples[self.data_args.dataset_text_field],
+            examples["tokens"],  # Replace with correct key, e.g., "tokens"
             truncation=True,
             is_split_into_words=True,
         )
 
         # Align labels with tokens
-        word_ids = tokenized_inputs.word_ids()
         aligned_labels = []
-        for word_idx in word_ids:
-            if word_idx is None:
-                aligned_labels.append(-100)
-            else:
-                aligned_labels.append(examples["ner_tags"][word_idx])
+
+        # Iterate through each example in the batch
+        for batch_index in range(len(examples["tokens"])):
+            word_ids = tokenized_inputs.word_ids(batch_index=batch_index)
+            labels = examples["ner_tags"][batch_index]
+            current_labels = []
+
+            for word_idx in word_ids:
+                if word_idx is None:
+                    current_labels.append(
+                        -100
+                    )  # Special value to ignore the token during loss calculation
+                else:
+                    try:
+                        current_labels.append(labels[word_idx])
+                    except IndexError:
+                        # If the word_idx is out of range for the label, append a default value
+                        current_labels.append(-100)
+
+            aligned_labels.append(current_labels)
 
         tokenized_inputs["labels"] = aligned_labels
         return tokenized_inputs
@@ -76,7 +90,7 @@ class DatasetCreator:
                     )
                 )
 
-            dataset = dataset.map(self.process_data, batched=True)
+            dataset = dataset.map(self.process_data, batched=True, batch_size=32)
             raw_datasets[split] = dataset
 
         train_data = raw_datasets.get("train")

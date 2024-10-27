@@ -92,6 +92,28 @@ class DataTrainingArguments:
     )
 
 
+def get_specific_layer_names(model):
+    """
+
+    list(set(get_specific_layer_names(model)))
+
+    """
+    import torch
+
+    # Create a list to store the layer names
+    layer_names = []
+
+    # Recursively visit all modules and submodules
+    for name, module in model.named_modules():
+        # Check if the module is an instance of the specified layers
+        if isinstance(module, (torch.nn.Linear, torch.nn.Embedding)):
+            # model name parsing
+
+            layer_names.append(".".join(name.split(".")[4:]).split(".")[0])
+
+    return layer_names
+
+
 def main(model_args, data_args, training_args):
     # Set seed for reproducibility
     set_seed(training_args.seed)
@@ -104,7 +126,10 @@ def main(model_args, data_args, training_args):
     # Set up gradient checkpointing
     model.config.use_cache = not training_args.gradient_checkpointing
 
-    # Create dataset splits
+    print(f"{model=}")
+    print("trainable layers")
+    print(f"{list(set(get_specific_layer_names(model)))=}")
+
     creator = DatasetCreator(tokenizer, data_args, training_args)
     train_dataset, valid_dataset, test_dataset = creator.create_datasets()
 
@@ -133,12 +158,14 @@ def main(model_args, data_args, training_args):
 
     if training_args.resume_from_checkpoint is not None:
         checkpoint = training_args.resume_from_checkpoint
-    trainer.train(resume_from_checkpoint=checkpoint)
+        trainer.train(resume_from_checkpoint=checkpoint)
 
     # Save final model
-    if trainer.is_fsdp_enabled:
-        trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
-    trainer.save_model()
+    # if trainer.is_fsdp_enabled:
+    #     trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
+    # trainer.accelerator.save(trainer.model.state_dict(), trainer.args.output_dir)
+    if trainer.is_world_process_zero:
+        trainer.save_model()
 
 
 if __name__ == "__main__":
@@ -153,8 +180,6 @@ if __name__ == "__main__":
         )
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    # print(f"{model_args=}")
-    # print(f"{data_args=}")
-    # print(f"{training_args=}")
 
     main(model_args, data_args, training_args)
+    print("all done :)))")
