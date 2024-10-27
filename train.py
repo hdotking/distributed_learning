@@ -3,8 +3,9 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
+import torch
 from transformers import HfArgumentParser, TrainingArguments, set_seed
-from trl import SFTConfig, SFTTrainer
+from trl import SFTTrainer
 
 from utils import ConfigCrossNER, DatasetCreator, create_and_prepare_model
 
@@ -94,12 +95,8 @@ class DataTrainingArguments:
 
 def get_specific_layer_names(model):
     """
-
     list(set(get_specific_layer_names(model)))
-
     """
-    import torch
-
     # Create a list to store the layer names
     layer_names = []
 
@@ -133,39 +130,26 @@ def main(model_args, data_args, training_args):
     creator = DatasetCreator(tokenizer, data_args, training_args)
     train_dataset, valid_dataset, test_dataset = creator.create_datasets()
 
-    # Configure training arguments for SFTTrainer
-    sft_config = SFTConfig(
-        output_dir=training_args.output_dir,
-        max_seq_length=data_args.max_seq_length,
-        learning_rate=training_args.learning_rate,
-        num_train_epochs=training_args.num_train_epochs,
-        per_device_train_batch_size=training_args.per_device_train_batch_size,
-        gradient_accumulation_steps=training_args.gradient_accumulation_steps,
-    )
-
     # Instantiate and run SFTTrainer
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
-        args=sft_config,
+        args=training_args,
         train_dataset=train_dataset,
         eval_dataset=valid_dataset,
         peft_config=peft_config,
     )
     trainer.accelerator.print(f"{trainer.model}")
-    if hasattr(trainer.model, "print_trainable_parameters()"):
+    if hasattr(trainer.model, "print_trainable_parameters"):
         trainer.model.print_trainable_parameters()
 
-    if training_args.resume_from_checkpoint is not None:
-        checkpoint = training_args.resume_from_checkpoint
-        trainer.train(resume_from_checkpoint=checkpoint)
+    # train
+    trainer.train()
 
-    # Save final model
-    # if trainer.is_fsdp_enabled:
-    #     trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
-    # trainer.accelerator.save(trainer.model.state_dict(), trainer.args.output_dir)
-    if trainer.is_world_process_zero:
-        trainer.save_model()
+    # saving final model
+    if trainer.is_fsdp_enabled:
+        trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
+    trainer.save_model()
 
 
 if __name__ == "__main__":
