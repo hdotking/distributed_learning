@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from typing import Optional, Tuple
 
 import torch
@@ -11,6 +12,15 @@ from transformers import (
     BitsAndBytesConfig,
     PreTrainedTokenizer,
 )
+
+
+class ConfigCrossNER(Enum):
+    AI = "ai"
+    CONLL2003 = "conll2003"
+    LITERATURE = "literature"
+    MUSIC = "music"
+    POLITICS = "politics"
+    SCIENCE = "science"
 
 
 class DatasetCreator:
@@ -52,10 +62,18 @@ class DatasetCreator:
         splits = [split.strip() for split in self.data_args.splits.split(",")]
         for split in splits:
             try:
-                dataset = load_dataset(self.data_args.dataset_name, split=split)
+                dataset = load_dataset(
+                    self.data_args.dataset_name,
+                    self.data_args.dataset_config,
+                    split=split,
+                )
             except DatasetGenerationError:
                 dataset = load_from_disk(
-                    os.path.join(self.data_args.dataset_name, split)
+                    os.path.join(
+                        self.data_args.dataset_name,
+                        self.data_args.dataset_config,
+                        split=split,
+                    )
                 )
 
             dataset = dataset.map(self.process_data, batched=True)
@@ -72,9 +90,14 @@ class QuantizationConfigBuilder:
     def __init__(self, args):
         self.args = args
         self.bnb_config = None
-        self.quant_storage_dtype = None
+        self.bnb_4bit_quant_storage = None
 
     def build(self):
+        # Printing for debugging purposes
+        print(f"{self.args.use_4bit_quantization=}")
+        print(f"{self.args.use_8bit_quantization=}")
+
+        # Determine if we need a 4-bit or 8-bit config
         if self.args.use_4bit_quantization:
             self._build_4bit_config()
         elif self.args.use_8bit_quantization:
@@ -83,19 +106,23 @@ class QuantizationConfigBuilder:
         return self.bnb_config
 
     def _build_4bit_config(self):
+        # Get compute data type from arguments
         compute_dtype = getattr(torch, self.args.bnb_4bit_compute_dtype)
-        self.quant_storage_dtype = getattr(
+        # Get quantization storage data type from arguments
+        self.bnb_4bit_quant_storage = getattr(
             torch, self.args.bnb_4bit_quant_storage_dtype
         )
 
+        # Build the 4-bit quantization configuration
         self.bnb_config = BitsAndBytesConfig(
             load_in_4bit=self.args.use_4bit_quantization,
             bnb_4bit_quant_type=self.args.bnb_4bit_quant_type,
             bnb_4bit_compute_dtype=compute_dtype,
             bnb_4bit_use_double_quant=self.args.use_nested_quant,
-            bnb_4bit_quant_storage=self.quant_storage_dtype,
+            bnb_4bit_quant_storage=self.bnb_4bit_quant_storage,
         )
 
+        # Check GPU capabilities for bf16
         if compute_dtype == torch.float16 and self.args.use_4bit_quantization:
             major, _ = torch.cuda.get_device_capability()
             if major >= 8:
@@ -106,6 +133,7 @@ class QuantizationConfigBuilder:
                 print("=" * 80)
 
     def _build_8bit_config(self):
+        # Build the 8-bit quantization configuration
         self.bnb_config = BitsAndBytesConfig(
             load_in_8bit=self.args.use_8bit_quantization
         )
@@ -118,15 +146,18 @@ class ModelLoader:
         self.quant_config = quant_config
 
     def load_model(self):
+        # Set torch_dtype based on the quantization storage configuration
         torch_dtype = (
-            self.quant_config.quant_storage_dtype
-            if self.quant_config.quant_storage_dtype
-            and self.quant_config.quant_storage_dtype.is_floating_point
+            self.quant_config.bnb_4bit_quant_storage
+            if self.quant_config.bnb_4bit_quant_storage
+            and self.quant_config.bnb_4bit_quant_storage.is_floating_point
             else torch.float32
         )
+
+        # Load the model using the quantization configuration
         return AutoModelForTokenClassification.from_pretrained(
             self.args.model_name_or_path,
-            quantization_config=self.quant_config.bnb_config,
+            quantization_config=self.quant_config,
             trust_remote_code=True,
             attn_implementation=(
                 "flash_attention_2" if self.args.use_flash_attn else "eager"
@@ -150,7 +181,7 @@ class TokenizerLoader:
 def create_and_prepare_model(args, data_args, training_args):
     # Step 1: Configure Quantisation
     quant_config = QuantizationConfigBuilder(args).build()
-
+    print(f"{quant_config=}")
     # Step 2: Load Model
     model_loader = ModelLoader(args, data_args, quant_config)
     model = model_loader.load_model()

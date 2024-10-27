@@ -6,7 +6,7 @@ from typing import Optional
 from transformers import HfArgumentParser, TrainingArguments, set_seed
 from trl import SFTConfig, SFTTrainer
 
-from utils import DatasetCreator, create_and_prepare_model
+from utils import ConfigCrossNER, DatasetCreator, create_and_prepare_model
 
 
 # Define and parse arguments.
@@ -70,9 +70,11 @@ class ModelArguments:
 
 @dataclass
 class DataTrainingArguments:
-    dataset_name: Optional[str] = field(
-        default="timdettmers/openassistant-guanaco",
+    dataset_name: str = field(
         metadata={"help": "The preference dataset to use."},
+    )
+    dataset_config: ConfigCrossNER = field(
+        metadata={"help": "The dataset configuration to use."},
     )
     dataset_text_field: str = field(
         default="text", metadata={"help": "Dataset field to use as input text."}
