@@ -124,7 +124,7 @@ def main(model_args, data_args, training_args):
     model.config.use_cache = not training_args.gradient_checkpointing
 
     print(f"{model=}")
-    print("trainable layers")
+    print("Display the trainingable layers for the QLoRa model.")
     print(f"{list(set(get_specific_layer_names(model)))=}")
 
     creator = DatasetCreator(tokenizer, data_args, training_args)
@@ -166,4 +166,4 @@ if __name__ == "__main__":
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     main(model_args, data_args, training_args)
-    print("all done :)))")
+    print("Training Complete :)")

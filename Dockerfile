@@ -24,10 +24,10 @@ RUN git clone https://github.com/Dao-AILab/flash-attention.git && \
     cd .. && \
     rm -rf flash-attention
 
-# Copy application code and set permissions to the non-root user
+# Copy application code. Optionally change user for enhanced security.
 COPY . .
 
-# Clean up unnecessary files to reduce image size as root
+# Clean up unnecessary files to reduce image size
 RUN rm -rf /tmp/* /root/.cache /usr/share/man /usr/share/doc /usr/share/locale /usr/share/info && \
     find /usr/local/lib/python3.10 -type d -name '__pycache__' -exec rm -r {} + && \
     rm -rf /var/lib/apt/lists/*

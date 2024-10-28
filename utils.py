@@ -107,10 +107,6 @@ class QuantizationConfigBuilder:
         self.bnb_4bit_quant_storage = None
 
     def build(self):
-        # Printing for debugging purposes
-        print(f"{self.args.use_4bit_quantization=}")
-        print(f"{self.args.use_8bit_quantization=}")
-
         # Determine if we need a 4-bit or 8-bit config
         if self.args.use_4bit_quantization:
             self._build_4bit_config()
